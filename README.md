@@ -350,6 +350,52 @@ await server.register({
 
 This serves `/v1/openapi.json` and `/v1/openapi/ui`. The UI's spec URL resolves under the same prefix, so it works standalone. `basePath` is what keeps two prefixed instances' documents disjoint: each document only includes routes under its own prefix, so neither instance's routes (or the other instance's spec and UI routes) leak into the wrong document.
 
+## Example server
+
+`example/server.ts` is a runnable server that puts the whole surface in front of you at once: validated path params, query and payload, a response schema, an authenticated route with its `security` mapping, a route hidden with `plugins.openapi.hide`, and a route dropped by `exclude`.
+
+It runs from a clone of this repository rather than from an installed package. It imports the plugin by name, `@hapi/openapi`, which Node's self-reference resolves through this package's `exports` to `dist/`, so the build has to exist first. `npm install` already runs `prepare`, which builds, so the explicit build is only needed after changing `src/`.
+
+```
+npm install
+npm run build
+
+node example/server.ts --ui scalar
+node example/server.ts --ui rapidoc --opts '{"theme":"dark","renderStyle":"read"}'
+node example/server.ts --ui swagger --opts ./example/swagger-opts.json
+node example/server.ts --ui redoc
+node example/server.ts --ui custom
+node example/server.ts --ui false
+```
+
+| Flag           | Values                                                     | Default    |
+| -------------- | ---------------------------------------------------------- | ---------- |
+| `--ui`         | `scalar`, `rapidoc`, `swagger`, `redoc`, `custom`, `false` | `'scalar'` |
+| `--opts`       | `uiOptions` as inline JSON, or a path to a JSON file       | `{}`       |
+| `--port`       | port to listen on, `0` for an ephemeral one                | `3000`     |
+| `--help`, `-h` | print the usage and exit                                   | off        |
+
+`--opts` tells the two forms apart by the first non-whitespace character: `{` is inline JSON, anything else is a file path. [`example/swagger-opts.json`](example/swagger-opts.json) is a file to try it with.
+
+`custom` is not a plugin value. It is the example passing a `UiRenderer` that builds a plain HTML index straight from the document, so the escape hatch runs instead of only being described. `false` registers no UI route, and the startup output says so. An unrecognized `--ui` exits non-zero listing the values it accepts.
+
+The server prints its own URLs:
+
+```text
+@hapi/openapi example listening on http://localhost:3000
+  spec:  http://localhost:3000/openapi.json
+  ui:    http://localhost:3000/openapi/ui (--ui scalar)
+  auth:  Authorization: Bearer demo-token (DELETE /widgets/{id})
+```
+
+Running a `.ts` file directly is native from Node 23.6 on. On Node 22, this package's floor, ask for it:
+
+```
+node --experimental-strip-types example/server.ts --ui scalar
+```
+
+Node 22 prints an `ExperimentalWarning` for type stripping ahead of the server's own output. Without the flag it refuses the file outright, with `ERR_UNKNOWN_FILE_EXTENSION`.
+
 ## API reference
 
 The full option, type, and per-route surface is in [API.md](API.md).

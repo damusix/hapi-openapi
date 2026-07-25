@@ -22,5 +22,5 @@
         "target": "ESNext",
         "types": ["node"]
     },
-    "include": ["src", "test"]
+    "include": ["src", "test", "example"]
 }
