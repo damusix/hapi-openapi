@@ -24,6 +24,86 @@ const RESERVED_KEYS = {
     swagger: ['url', 'dom_id'],
 } satisfies Record<UiName, string[]>;
 
+// Features that hand the API document, or its URL, to the renderer's vendor.
+// This plugin exists to render an organization's internal API surface, so every
+// one of them is off unless the caller asks for it. Each key is the vendor's own
+// name, taken from its source or its documentation rather than paraphrased: a
+// key a renderer does not recognize is ignored in silence and the feature stays
+// live, which is the worst way for a security default to fail.
+const SECURE_DEFAULTS = {
+    // Ask AI and the MCP integration both hand the document to Scalar's
+    // services; telemetry is the same class of egress. Names from Scalar's
+    // `packages/types/src/api-reference/types.ts`.
+    scalar: { agent: { disabled: true }, mcp: { disabled: true }, telemetry: false },
+
+    // The string 'false', not the boolean: RapiDoc reads this as an attribute
+    // value, and a boolean `false` would be dropped by the attribute rules
+    // below, leaving the fonts loading. This one is not document egress —
+    // RapiDoc otherwise builds a FontFace against fonts.gstatic.com, so every
+    // viewer's browser contacts Google — and it does change the typeface,
+    // falling back to whatever the system provides.
+    rapidoc: { loadFonts: 'false' },
+
+    // Nothing to switch off. A bundle audit found no phone-home: the
+    // `telemetry` and `amplitude` strings in redoc.standalone.js are Redocly's
+    // config-file JSON schema and React's SVG attribute list, not runtime calls.
+    redoc: {},
+
+    // The most direct leak of the set. Swagger UI otherwise sends the spec URL
+    // to https://validator.swagger.io/validator, which fetches the document to
+    // render a validity badge. 'none', '127.0.0.1', and 'localhost' all disable
+    // validation.
+    swagger: { validatorUrl: 'none' },
+} satisfies Record<UiName, Record<string, unknown>>;
+
+// Carried by every tag that actually fetches from the CDN, and by no other: a
+// `<script>` with `src`, a `<link>` with `href`. Both attributes are inputs to
+// the browser's fetch-a-classic-script algorithm, so on a tag that makes no
+// request they are dead markup.
+//
+// The CDN never receives the document: it serves JavaScript to the browser, and
+// the spec is fetched from this server. What it would otherwise learn is the
+// Referer — the internal host and path serving the docs, which discloses that an
+// internal API exists and where. `no-referrer` closes that, and `anonymous`
+// keeps credentials off the cross-origin request.
+const CDN_TAG_ATTRIBUTES = 'referrerpolicy="no-referrer" crossorigin="anonymous"';
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+    return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+// A nested default merges one level deep rather than being overwritten
+// wholesale. A whole-object merge would let `agent: { key: 'abc' }` drop
+// `disabled: true` on the floor and silently re-enable the Ask AI button; here
+// only an explicit `agent: { disabled: false }` turns it back on. A flat default
+// is overridden by an explicit key of the same name and by nothing else. A
+// non-object value where the default is an object is off contract for the
+// renderer and leaves the default standing.
+function withSecureDefaults(
+    defaults: Record<string, unknown>,
+    uiOptions: Record<string, unknown>,
+): Record<string, unknown> {
+    const merged: Record<string, unknown> = { ...defaults, ...uiOptions };
+
+    for (const [key, fallback] of Object.entries(defaults)) {
+        if (isPlainObject(fallback)) {
+            merged[key] = { ...fallback, ...(isPlainObject(uiOptions[key]) ? uiOptions[key] : {}) };
+        }
+    }
+
+    return merged;
+}
+
+// RapiDoc reads `load-fonts` as a string and guards on `'false' !== loadFonts`,
+// while the attribute rules below drop a boolean `false` outright. So
+// `loadFonts: false` — the most natural way to ask for fonts off — would emit no
+// attribute at all, leave `this.loadFonts` undefined, and load the fonts. Either
+// boolean is coerced to the string RapiDoc actually reads, so both spellings
+// produce what the caller meant.
+function withRapidocFontFlag(options: Record<string, unknown>): Record<string, unknown> {
+    return typeof options.loadFonts === 'boolean' ? { ...options, loadFonts: String(options.loadFonts) } : options;
+}
+
 // Applied to everything that lands in an attribute value or in element text:
 // the document title, the spec path, Scalar's serialized configuration, and
 // every `uiOptions` value. None of those is attacker-controlled in normal use,
@@ -127,35 +207,36 @@ ${body}
 // share a configuration mechanism, so each serializes `uiOptions` into its own.
 export const uiProviders: Record<UiName, UiProvider> = {
     scalar: (title, specPath, uiOptions) => {
-        // Gated on the serialized form, not on the key count: a bag whose only
-        // members drop out of JSON (an `undefined` value) serializes to `{}`
-        // and should leave the markup untouched, same as an empty bag.
-        const configuration = JSON.stringify(omitReserved(uiOptions, RESERVED_KEYS.scalar));
+        // Emitted unconditionally: there is always at least the secure defaults
+        // to carry, whatever the caller passed.
+        const configuration = JSON.stringify(
+            omitReserved(withSecureDefaults(SECURE_DEFAULTS.scalar, uiOptions), RESERVED_KEYS.scalar),
+        );
 
         // Scalar reads its configuration as JSON out of `data-configuration`,
         // and its own parser does `.split('&quot;').join('"')` — so ordinary
         // HTML escaping is exactly what it expects to receive.
-        const attribute = configuration === '{}' ? '' : ` data-configuration="${escapeHtml(configuration)}"`;
-
         return htmlDocument(
             title,
-            `    <script id="api-reference" data-url="${escapeHtml(specPath)}"${attribute}></script>
-    <script src="${SCALAR_SCRIPT}"></script>`,
+            `    <script id="api-reference" data-url="${escapeHtml(specPath)}" data-configuration="${escapeHtml(configuration)}"></script>
+    <script src="${SCALAR_SCRIPT}" ${CDN_TAG_ATTRIBUTES}></script>`,
         );
     },
 
     rapidoc: (title, specPath, uiOptions) =>
         htmlDocument(
             title,
-            `    <rapi-doc spec-url="${escapeHtml(specPath)}"${toAttributes(uiOptions, RESERVED_KEYS.rapidoc)}></rapi-doc>
-    <script src="${RAPIDOC_SCRIPT}"></script>`,
+            `    <rapi-doc spec-url="${escapeHtml(specPath)}"${toAttributes(withRapidocFontFlag(withSecureDefaults(SECURE_DEFAULTS.rapidoc, uiOptions)), RESERVED_KEYS.rapidoc)}></rapi-doc>
+    <script src="${RAPIDOC_SCRIPT}" ${CDN_TAG_ATTRIBUTES}></script>`,
         ),
 
+    // The one built-in with no secure default of its own, so an empty bag leaves
+    // the element unadorned.
     redoc: (title, specPath, uiOptions) =>
         htmlDocument(
             title,
-            `    <redoc spec-url="${escapeHtml(specPath)}"${toAttributes(uiOptions, RESERVED_KEYS.redoc)}></redoc>
-    <script src="${REDOC_SCRIPT}"></script>`,
+            `    <redoc spec-url="${escapeHtml(specPath)}"${toAttributes(withSecureDefaults(SECURE_DEFAULTS.redoc, uiOptions), RESERVED_KEYS.redoc)}></redoc>
+    <script src="${REDOC_SCRIPT}" ${CDN_TAG_ATTRIBUTES}></script>`,
         ),
 
     // The only built-in that needs a stylesheet, and the only one with no
@@ -164,8 +245,8 @@ export const uiProviders: Record<UiName, UiProvider> = {
         htmlDocument(
             title,
             `    <div id="swagger-ui"></div>
-    <script src="${SWAGGER_SCRIPT}"></script>
-    <script>SwaggerUIBundle({ url: ${toScriptJson(specPath)}, dom_id: '#swagger-ui'${toInitProperties(uiOptions, RESERVED_KEYS.swagger)} });</script>`,
-            `\n  <link rel="stylesheet" href="${SWAGGER_STYLES}" />`,
+    <script src="${SWAGGER_SCRIPT}" ${CDN_TAG_ATTRIBUTES}></script>
+    <script>SwaggerUIBundle({ url: ${toScriptJson(specPath)}, dom_id: '#swagger-ui'${toInitProperties(withSecureDefaults(SECURE_DEFAULTS.swagger, uiOptions), RESERVED_KEYS.swagger)} });</script>`,
+            `\n  <link rel="stylesheet" href="${SWAGGER_STYLES}" ${CDN_TAG_ATTRIBUTES} />`,
         ),
 };

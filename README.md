@@ -133,8 +133,8 @@ Each built-in emits a complete HTML document that points the renderer at the spe
   <head><title>My API</title><meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" /></head>
   <body>
-    <script id="api-reference" data-url="/openapi.json"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@scalar/api-reference@1"></script>
+    <script id="api-reference" data-url="/openapi.json" data-configuration="..."></script>
+    <script src="https://cdn.jsdelivr.net/npm/@scalar/api-reference@1" referrerpolicy="no-referrer" crossorigin="anonymous"></script>
   </body>
 </html>
 ```
@@ -142,6 +142,38 @@ Each built-in emits a complete HTML document that points the renderer at the spe
 Every CDN URL is pinned to the renderer's major version. An unversioned jsdelivr or unpkg URL resolves to `@latest` on every page load, which would let a renderer's next breaking release break your documentation page with no change on your side.
 
 `ui: false` registers no UI route at all. `GET <path>/ui` then returns 404, and only the spec route exists.
+
+### Secure defaults
+
+Several of these renderers ship features that send your API document, or the URL it lives at, to the renderer's vendor. This plugin renders an organization's internal API surface, so every one of those features is off unless you turn it on. **This is a deliberate divergence from each renderer's stock behavior.**
+
+`'scalar'`:
+
+| Default            | Prevents                                                           | Opt back in                                 |
+| ------------------ | ------------------------------------------------------------------ | ------------------------------------------- |
+| `agent.disabled`   | The Ask AI button, which sends the document to Scalar's AI service | `uiOptions: { agent: { disabled: false } }` |
+| `mcp.disabled`     | The MCP integration, which exposes the API through Scalar          | `uiOptions: { mcp: { disabled: false } }`   |
+| `telemetry: false` | Scalar's event capture                                             | `uiOptions: { telemetry: true }`            |
+
+`'swagger'`:
+
+| Default                | Prevents                                                                                                                                       | Opt back in                                                             |
+| ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
+| `validatorUrl: 'none'` | The validity badge. Swagger UI otherwise hands your spec URL to `https://validator.swagger.io/validator`, which then **fetches your document** | `uiOptions: { validatorUrl: 'https://validator.swagger.io/validator' }` |
+
+`'rapidoc'`:
+
+| Default              | Prevents                                                                                                                                  | Opt back in                                                 |
+| -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------- |
+| `loadFonts: 'false'` | Every viewer's browser fetching Open Sans from `fonts.gstatic.com`. **This one changes how the page looks**, falling back to system fonts | `uiOptions: { loadFonts: 'true' }` or `{ loadFonts: true }` |
+
+`'redoc'` has no such default, because it has no such feature. An audit of `redoc.standalone.js@2` found no phone-home: the `telemetry` and `amplitude` strings in the bundle are Redocly's config-file schema and React's SVG attribute list, not runtime calls.
+
+RapiDoc reads `load-fonts` as a string rather than a boolean, so `loadFonts` accepts either spelling and both do what they say: `false` and `'false'` keep fonts off, `true` and `'true'` turn them on. The plugin converts a boolean to the string form RapiDoc reads.
+
+Nested defaults merge one level deep, so setting an unrelated sub-key does not quietly re-enable a feature. `uiOptions: { agent: { key: 'abc' } }` still sends `agent.disabled: true`; only writing `disabled: false` yourself turns the Ask AI button back on.
+
+Every tag the plugin emits that actually fetches from a CDN, meaning a `<script>` with `src` and a `<link>` with `href`, carries `referrerpolicy="no-referrer"` and `crossorigin="anonymous"`. **The CDN never receives your document** — it serves JavaScript to the browser, and the spec is fetched from your own server. What it would otherwise receive is a `Referer` header naming the internal host and path serving your docs, disclosing that an internal API exists and where. That is the only CDN-side disclosure there is to close, and `no-referrer` closes it.
 
 ### Configuring the renderer
 
@@ -161,10 +193,10 @@ await server.register({
 That emits:
 
 ```text
-<rapi-doc spec-url="/openapi.json" render-style="read" primary-color="#6b46c1"></rapi-doc>
+<rapi-doc spec-url="/openapi.json" load-fonts="false" render-style="read" primary-color="#6b46c1"></rapi-doc>
 ```
 
-The four renderers do not share a configuration mechanism, so each one receives the bag through its own:
+The four renderers do not share a configuration mechanism, so each one receives the bag through its own, merged over that renderer's [secure defaults](#secure-defaults):
 
 | `ui`        | Mechanism                                  | Example                                               |
 | ----------- | ------------------------------------------ | ----------------------------------------------------- |

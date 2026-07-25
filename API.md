@@ -255,15 +255,51 @@ This namespace is not validated at register time. hapi does not validate plugin-
 
 Swagger UI is the only built-in with a second asset, `https://unpkg.com/swagger-ui-dist@5/swagger-ui.css`, referenced by a `<link>` in the emitted HTML.
 
-Each built-in emits a complete HTML document: doctype, `<title>` from `options.info.title`, `charset`, a mobile viewport meta, the mount element, and the script tag. The plugin serves that HTML as `text/html` and nothing else; the browser fetches the renderer's JavaScript from the CDN.
+Each built-in emits a complete HTML document: doctype, `<title>` from `options.info.title`, `charset`, a mobile viewport meta, the mount element, the script tag, and that renderer's [secure defaults](#secure-defaults). The plugin serves that HTML as `text/html` and nothing else; the browser fetches the renderer's JavaScript from the CDN.
 
 CDN URLs are pinned to the renderer's major version, so patch and minor releases flow through but a breaking major does not.
 
 `title` and the spec path are HTML-escaped (`&`, `<`, `>`, `"`, `'`) wherever they appear in markup. Swagger UI's init call takes the spec path as a JavaScript argument instead, so there it is embedded as a JSON string literal, with `<` further escaped to `\u003C`, because HTML character references are not decoded inside `<script>`.
 
+### Secure defaults
+
+Each renderer ships features that send the API document, or the URL it is served from, to that renderer's vendor. All of them are off by default. Every key below is the vendor's own name, taken from its source or documentation: a key a renderer does not recognize is ignored in silence and the feature stays live.
+
+| `ui`        | Key              | Default   | What it prevents                                                                                                                                   |
+| ----------- | ---------------- | --------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `'scalar'`  | `agent.disabled` | `true`    | The Ask AI button, which sends the document to Scalar's AI service                                                                                 |
+| `'scalar'`  | `mcp.disabled`   | `true`    | The MCP integration, which exposes the API through Scalar                                                                                          |
+| `'scalar'`  | `telemetry`      | `false`   | Scalar's event capture                                                                                                                             |
+| `'swagger'` | `validatorUrl`   | `'none'`  | The validity badge. Swagger UI otherwise hands the spec URL to `https://validator.swagger.io/validator`, which fetches the document to render it   |
+| `'rapidoc'` | `loadFonts`      | `'false'` | Every viewer's browser fetching Open Sans from `fonts.gstatic.com`. Not document egress, and it changes the typeface, falling back to system fonts |
+| `'redoc'`   | none             |           | Redoc has no such feature. `telemetry` and `amplitude` appear in its bundle only as Redocly's config-file schema and React's SVG attribute list    |
+
+The `loadFonts` default is the string `'false'`, not the boolean. RapiDoc declares the property as `loadFonts: { type: String, attribute: 'load-fonts' }` and guards font loading with `'false' !== this.loadFonts`, so only that exact string disables it, and a boolean `false` would be omitted entirely under the attribute value rules below.
+
+A caller may still pass either spelling. The rapidoc provider converts a boolean `loadFonts` to its string form in both directions, so `false` and `'false'` both emit `load-fonts="false"`, and `true` and `'true'` both emit `load-fonts="true"`. Without that conversion `loadFonts: false` would emit no attribute, leave `this.loadFonts` undefined, and load the fonts: the safe spelling producing the unsafe result.
+
+Any of these is overridden by an explicit `uiOptions` key of the same name. A nested default merges one level deep, so `uiOptions: { agent: { key: 'abc' } }` keeps `agent.disabled: true`, and only `uiOptions: { agent: { disabled: false } }` re-enables the feature. A non-object value where the default is an object is off contract for the renderer and leaves the default in place.
+
+Because scalar, swagger, and rapidoc always have at least one default to carry, each always emits its configuration. Redoc, having none, emits an unadorned element for an empty `uiOptions`.
+
+### Referrer suppression
+
+Every tag the plugin emits that fetches from a CDN carries `referrerpolicy="no-referrer"` and `crossorigin="anonymous"`, for all four renderers. That means a `<script>` with `src` and a `<link>` with `href`.
+
+The CDN never receives the document. It serves JavaScript to the browser, and the browser fetches the spec from this server. The one thing the CDN would otherwise learn is the `Referer` header: the internal host and path serving the documentation, which discloses that an internal API exists and where. `no-referrer` closes that, and `anonymous` keeps credentials off the cross-origin request.
+
+Tags that fetch nothing do not carry them: scalar's `data-configuration` carrier and swagger's inline init script have no `src`, and both attributes are inputs to the browser's fetch-a-classic-script algorithm, so on those tags they would be dead markup.
+
+| Renderer    | Tags carrying the attributes                   | Tags without them                         |
+| ----------- | ---------------------------------------------- | ----------------------------------------- |
+| `'scalar'`  | the `<script src>` for the CDN bundle          | the `<script id="api-reference">` carrier |
+| `'rapidoc'` | the `<script src>` for the CDN bundle          | none                                      |
+| `'redoc'`   | the `<script src>` for the CDN bundle          | none                                      |
+| `'swagger'` | the `<script src>` and the stylesheet `<link>` | the inline `SwaggerUIBundle` init script  |
+
 ### `uiOptions`
 
-`Record<string, unknown>`, default `{}`. Passed to the built-in provider selected by `ui` and serialized into that renderer's own configuration mechanism. Ignored when `ui` is `false` or a `UiRenderer`.
+`Record<string, unknown>`, default `{}`. Passed to the built-in provider selected by `ui`, merged over that renderer's secure defaults, and serialized into its own configuration mechanism. Ignored when `ui` is `false` or a `UiRenderer`.
 
 ```ts
 await server.register({
@@ -278,12 +314,12 @@ await server.register({
 
 The four renderers do not share a mechanism, so there is no single serialization:
 
-| `ui`        | Mechanism                                                | Emitted                                                                                 |
-| ----------- | -------------------------------------------------------- | --------------------------------------------------------------------------------------- |
-| `'scalar'`  | `data-configuration` attribute holding JSON              | `data-configuration="{&quot;theme&quot;:&quot;purple&quot;}"`                           |
-| `'rapidoc'` | attributes on `<rapi-doc>`, camelCase keys as kebab-case | `<rapi-doc spec-url="/openapi.json" render-style="read">`                               |
-| `'redoc'`   | attributes on `<redoc>`, camelCase keys as kebab-case    | `<redoc spec-url="/openapi.json" hide-download-button>`                                 |
-| `'swagger'` | members of the init object                               | `SwaggerUIBundle({ url: "/openapi.json", dom_id: '#swagger-ui', "deepLinking": true })` |
+| `ui`        | Mechanism                                                | Emitted, with the secure defaults it always carries                                                                                 |
+| ----------- | -------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `'scalar'`  | `data-configuration` attribute holding JSON              | `data-configuration="{&quot;agent&quot;:...,&quot;mcp&quot;:...,&quot;telemetry&quot;:false,&quot;theme&quot;:&quot;purple&quot;}"` |
+| `'rapidoc'` | attributes on `<rapi-doc>`, camelCase keys as kebab-case | `<rapi-doc spec-url="/openapi.json" load-fonts="false" render-style="read">`                                                        |
+| `'redoc'`   | attributes on `<redoc>`, camelCase keys as kebab-case    | `<redoc spec-url="/openapi.json" hide-download-button>`                                                                             |
+| `'swagger'` | members of the init object                               | `SwaggerUIBundle({ url: "/openapi.json", dom_id: '#swagger-ui', "validatorUrl": "none", "deepLinking": true })`                     |
 
 Scalar's JSON is HTML-escaped into the attribute. Its own parser does `.split('&quot;').join('"')`, so entity-escaped quotes are the form it reads back. Swagger UI's members are JSON, with `<` escaped to `\u003C` for the same reason the spec path is.
 
