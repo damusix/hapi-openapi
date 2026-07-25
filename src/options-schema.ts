@@ -10,10 +10,14 @@ export const optionsSchema = Joi.object({
     }).required(),
     path: Joi.string().default('/openapi'),
     basePath: Joi.string().pattern(/^\//),
-    ui: Joi.alternatives(Joi.string().valid('scalar'), Joi.boolean().valid(false)).default('scalar'),
-    scalar: Joi.object({
-        cdn: Joi.boolean().default(false),
-    }).default({ cdn: false }),
+    // `convert: false` on the boolean branch only: joi converts by default, so
+    // without it the strings 'false' and 'FALSE' coerce to boolean false and are
+    // silently accepted — registration succeeds and the UI route never exists.
+    ui: Joi.alternatives(
+        Joi.string().valid('scalar', 'rapidoc', 'swagger', 'redoc'),
+        Joi.function(),
+        Joi.boolean().valid(false).prefs({ convert: false }),
+    ).default('scalar'),
     security: Joi.object()
         .pattern(Joi.string(), Joi.object({ type: Joi.string().required() }).unknown(true))
         .default({}),

@@ -1,11 +1,11 @@
 import { buildOpenApiDocument } from './build-document.js';
 import { optionsSchema } from './options-schema.js';
-import { shellHtmlFor, readScalarBundle } from './ui.js';
+import { uiProviders } from './ui.js';
 
-import type { Plugin } from '@hapi/hapi';
+import type { Lifecycle, Plugin } from '@hapi/hapi';
 import type { OpenApiOptions, ResolvedOpenApiOptions } from './types.js';
 
-export type { OpenApiOptions } from './types.js';
+export type { OpenApiOptions, OpenApiResponseAnnotation, UiName, UiRenderer } from './types.js';
 
 export const OpenApiPlugin: Plugin<OpenApiOptions> = {
     name: '@hapi/openapi',
@@ -51,35 +51,26 @@ export const OpenApiPlugin: Plugin<OpenApiOptions> = {
             },
         });
 
-        if (options.ui === 'scalar') {
+        // Bound to a const so the narrowing below survives into the handler
+        // closure, which a narrowed property access would not.
+        const ui = options.ui;
+
+        if (ui !== false) {
             const uiPath = `${options.path}/ui`;
-            const assetPath = `${uiPath}/scalar.js`;
             const fullUiPath = `${prefix}${uiPath}`;
 
             ownPaths.add(fullUiPath);
 
-            server.route({
-                method: 'GET',
-                path: uiPath,
-                handler: (_request, h) =>
-                    h
-                        .response(shellHtmlFor(options.info.title, fullSpecPath, fullUiPath, options.scalar.cdn))
-                        .type('text/html'),
-            });
+            const handler: Lifecycle.Method =
+                typeof ui === 'function'
+                    ? (request, h) => {
+                          cachedDocument ??= buildOpenApiDocument(server, options, ownPaths);
 
-            if (!options.scalar.cdn) {
-                // Read eagerly so a missing/relocated bundle fails registration
-                // with a clear message, instead of a generic 500 on first request.
-                readScalarBundle();
+                          return ui(request, cachedDocument, h);
+                      }
+                    : (_request, h) => h.response(uiProviders[ui](options.info.title, fullSpecPath)).type('text/html');
 
-                ownPaths.add(`${prefix}${assetPath}`);
-
-                server.route({
-                    method: 'GET',
-                    path: assetPath,
-                    handler: (_request, h) => h.response(readScalarBundle()).type('application/javascript'),
-                });
-            }
+            server.route({ method: 'GET', path: uiPath, handler });
         }
     },
 };

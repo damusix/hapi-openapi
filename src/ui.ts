@@ -1,74 +1,84 @@
-import { readFileSync } from 'node:fs';
-import { createRequire } from 'node:module';
-import { dirname, join } from 'node:path';
+import type { UiName } from './types.js';
 
-// This package is ESM, so the CJS `require.resolve` builtin does not exist.
-// `import.meta.resolve` is not a substitute: it resolves the `import`
-// condition of the target's exports map and can select a different file than
-// the CJS resolution the bundle lookup below assumes.
-const require = createRequire(import.meta.url);
+/** Renders the complete HTML document served at `<path>/ui` for one renderer. */
+type UiProvider = (title: string, specPath: string) => string;
 
-const CDN_SRC = 'https://cdn.jsdelivr.net/npm/@scalar/api-reference';
+// Pinned to the renderer's major. An unversioned jsdelivr/unpkg URL resolves to
+// @latest on every page load, so the renderer's next breaking release would
+// break every consumer's docs page with no change here; the pin makes that
+// upgrade a deliberate release of this package instead.
+const SCALAR_SCRIPT = 'https://cdn.jsdelivr.net/npm/@scalar/api-reference@1';
+const RAPIDOC_SCRIPT = 'https://unpkg.com/rapidoc@9/dist/rapidoc-min.js';
+const REDOC_SCRIPT = 'https://cdn.jsdelivr.net/npm/redoc@2/bundles/redoc.standalone.js';
+const SWAGGER_SCRIPT = 'https://unpkg.com/swagger-ui-dist@5/swagger-ui-bundle.js';
+const SWAGGER_STYLES = 'https://unpkg.com/swagger-ui-dist@5/swagger-ui.css';
 
-export function shellHtmlFor(title: string, specPath: string, uiPath: string, cdn: boolean): string {
-    const scriptSrc = cdn ? CDN_SRC : `${uiPath}/scalar.js`;
+// `title` comes from user config and `specPath` from the plugin's own option,
+// so neither is attacker-controlled in normal use — but both are interpolated
+// into markup, where an unescaped quote closes the attribute holding it.
+function escapeHtml(value: string): string {
+    return value
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#39;');
+}
 
+// Swagger UI takes the spec URL as a JavaScript argument rather than as an
+// attribute, and character references are not decoded inside <script> — an
+// HTML-escaped path would reach SwaggerUIBundle with the entities intact.
+// A JSON string literal is the correct escape there, plus `<` so the value
+// cannot close the script tag.
+function escapeScriptString(value: string): string {
+    return JSON.stringify(value).replaceAll('<', '\\u003C');
+}
+
+function htmlDocument(title: string, body: string, head = ''): string {
     return `<!DOCTYPE html>
 <html>
-  <head><title>${title}</title><meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" /></head>
+  <head><title>${escapeHtml(title)}</title><meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />${head}</head>
   <body>
-    <script id="api-reference" data-url="${specPath}"></script>
-    <script src="${scriptSrc}"></script>
+${body}
   </body>
 </html>
 `;
 }
 
-// The standalone browser bundle is not part of @scalar/api-reference's
-// package.json `exports` map (only ESM entry points are exported), so it is
-// located relative to the resolved package root rather than via a subpath
-// import. Read once and cached — the bundle never changes at runtime.
-let cachedBundle: string | null = null;
+// Each built-in is a pure function of the document title and the spec URL. The
+// renderer's own JavaScript is loaded by the browser from a public CDN; this
+// plugin serves HTML and nothing else.
+export const uiProviders: Record<UiName, UiProvider> = {
+    scalar: (title, specPath) =>
+        htmlDocument(
+            title,
+            `    <script id="api-reference" data-url="${escapeHtml(specPath)}"></script>
+    <script src="${SCALAR_SCRIPT}"></script>`,
+        ),
 
-// Exported as a seam: `resolveBundlePath` can be pointed at a nonexistent
-// path in tests to exercise the eager-read failure without needing an
-// actually-broken @scalar/api-reference install.
-export function resolveBundlePath(): string {
-    return join(dirname(require.resolve('@scalar/api-reference')), 'browser', 'standalone.js');
-}
+    rapidoc: (title, specPath) =>
+        htmlDocument(
+            title,
+            `    <rapi-doc spec-url="${escapeHtml(specPath)}"></rapi-doc>
+    <script src="${RAPIDOC_SCRIPT}"></script>`,
+        ),
 
-/** Test-only seam: clears the module-level bundle cache. */
-export function __resetScalarBundleCacheForTests(): void {
-    cachedBundle = null;
-}
+    redoc: (title, specPath) =>
+        htmlDocument(
+            title,
+            `    <redoc spec-url="${escapeHtml(specPath)}"></redoc>
+    <script src="${REDOC_SCRIPT}"></script>`,
+        ),
 
-export function readScalarBundle(resolvePath?: () => string): string {
-    // A custom resolver (test seam) always reads fresh — only the default
-    // resolution path is cached, since that's the one real-server path
-    // where the bundle is known to never change at runtime.
-    if (!resolvePath && cachedBundle !== null) {
-        return cachedBundle;
-    }
-
-    const bundlePath = (resolvePath ?? resolveBundlePath)();
-
-    let contents: string;
-
-    try {
-        contents = readFileSync(bundlePath, 'utf-8');
-    } catch (cause) {
-        throw new Error(
-            `@hapi/openapi: could not read the bundled Scalar UI asset at "${bundlePath}". ` +
-                `This can happen if @scalar/api-reference changed its package layout. ` +
-                `Workaround: pass \`scalar: { cdn: true }\` to load the UI from jsdelivr instead.`,
-            { cause },
-        );
-    }
-
-    if (!resolvePath) {
-        cachedBundle = contents;
-    }
-
-    return contents;
-}
+    // The only built-in that needs a stylesheet, and the only one with no
+    // declarative mount: Swagger UI is booted by an explicit init call.
+    swagger: (title, specPath) =>
+        htmlDocument(
+            title,
+            `    <div id="swagger-ui"></div>
+    <script src="${SWAGGER_SCRIPT}"></script>
+    <script>SwaggerUIBundle({ url: ${escapeScriptString(specPath)}, dom_id: '#swagger-ui' });</script>`,
+            `\n  <link rel="stylesheet" href="${SWAGGER_STYLES}" />`,
+        ),
+};

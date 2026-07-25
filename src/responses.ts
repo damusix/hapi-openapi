@@ -1,11 +1,7 @@
 import { isJoiSchema, toResponseSchema } from './joi-json-schema.js';
 
 import type { RequestRoute } from '@hapi/hapi';
-
-interface ResponseAnnotation {
-    description?: string;
-    schema?: unknown;
-}
+import type { OpenApiResponseAnnotation } from './types.js';
 
 interface CollectedResponse {
     // Explicitly `| undefined`: collection carries an absent description
@@ -15,8 +11,10 @@ interface CollectedResponse {
     schema?: unknown;
 }
 
-function readAnnotations(route: RequestRoute): Record<string, ResponseAnnotation> {
-    const plugins = route.settings.plugins as { openapi?: { responses?: Record<string, ResponseAnnotation> } };
+function readAnnotations(route: RequestRoute): Record<string, OpenApiResponseAnnotation> {
+    const plugins = route.settings.plugins as {
+        openapi?: { responses?: Record<string, OpenApiResponseAnnotation> };
+    };
 
     return plugins?.openapi?.responses ?? {};
 }
