@@ -1,0 +1,66 @@
+{
+    "name": "@hapi/openapi",
+    "version": "1.0.0",
+    "description": "OpenAPI 3.1 document generation and documentation UI for hapi",
+    "keywords": [
+        "documentation",
+        "hapi",
+        "openapi",
+        "plugin",
+        "swagger"
+    ],
+    "license": "BSD-3-Clause",
+    "repository": "git://github.com/damusix/hapi-openapi",
+    "files": [
+        "dist",
+        "API.md",
+        "README.md"
+    ],
+    "type": "module",
+    "types": "./dist/index.d.ts",
+    "exports": {
+        ".": "./dist/index.js",
+        "./package.json": "./package.json"
+    },
+    "scripts": {
+        "prepare": "node --run build",
+        "test": "vitest run --coverage",
+        "typecheck": "tsc --noEmit",
+        "lint": "oxlint",
+        "lint:fix": "oxlint --fix",
+        "fmt": "oxfmt --check",
+        "fmt:fix": "oxfmt",
+        "build": "tsdown"
+    },
+    "devDependencies": {
+        "@hapi/hapi": "^21.4.10",
+        "@hapi/oxc-plugin": "^1.0.2",
+        "@scalar/api-reference": "^1.63.0",
+        "@types/node": "^22.20.0",
+        "@vitest/coverage-v8": "^4.1.9",
+        "joi": "^18.2.3",
+        "oxfmt": "^0.57.0",
+        "oxlint": "^1.72.0",
+        "rapidoc": "^9.3.8",
+        "tsdown": "^0.22.3",
+        "typescript": "^6.0.3",
+        "vitest": "^4.1.9"
+    },
+    "peerDependencies": {
+        "@hapi/hapi": "^21.0.0",
+        "@scalar/api-reference": "*",
+        "joi": ">=18.2.0",
+        "rapidoc": "*"
+    },
+    "peerDependenciesMeta": {
+        "@scalar/api-reference": {
+            "optional": true
+        },
+        "rapidoc": {
+            "optional": true
+        }
+    },
+    "engines": {
+        "node": ">=22"
+    }
+}
