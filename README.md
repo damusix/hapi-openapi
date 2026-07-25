@@ -96,6 +96,7 @@ server.route({
 | `path`      | `string`                                                               | `'/openapi'` | Base path. The spec serves at `<path>.json`, the UI at `<path>/ui`.                                                                                                                                                                                                              |
 | `basePath`  | `string`                                                               | none         | Must start with `/`. Scopes the document to routes whose full path equals `basePath` or starts with `basePath + '/'`. Applied before own-route/isInternal/exclude/hide/tagged filtering. Documented paths keep their full server path. No `basePath` documents the whole server. |
 | `ui`        | `'scalar' \| 'rapidoc' \| 'swagger' \| 'redoc' \| false \| UiRenderer` | `'scalar'`   | Which documentation UI to serve at `<path>/ui`. See [Documentation UI](#documentation-ui).                                                                                                                                                                                       |
+| `uiOptions` | `Record<string, unknown>`                                              | `{}`         | Options for the built-in renderer selected by `ui`. See [Configuring the renderer](#configuring-the-renderer). No effect when `ui` is `false` or a `UiRenderer`.                                                                                                                 |
 | `security`  | `Record<string, OpenApiSecurityScheme>`                                | `{}`         | Maps a hapi auth strategy name to an OAS 3.1 Security Scheme Object, emitted verbatim.                                                                                                                                                                                           |
 | `include`   | `'auto' \| 'tagged'`                                                   | `'auto'`     | `'auto'` documents every route except hidden/internal/excluded ones. `'tagged'` documents only routes carrying `filterTag`.                                                                                                                                                      |
 | `filterTag` | `string`                                                               | `'api'`      | The marker tag used by `include: 'tagged'`. Always stripped from emitted operation tags in both modes.                                                                                                                                                                           |
@@ -141,6 +142,47 @@ Each built-in emits a complete HTML document that points the renderer at the spe
 Every CDN URL is pinned to the renderer's major version. An unversioned jsdelivr or unpkg URL resolves to `@latest` on every page load, which would let a renderer's next breaking release break your documentation page with no change on your side.
 
 `ui: false` registers no UI route at all. `GET <path>/ui` then returns 404, and only the spec route exists.
+
+### Configuring the renderer
+
+`uiOptions` is handed to whichever built-in `ui` selected, so choosing a renderer does not mean accepting its defaults:
+
+```ts
+await server.register({
+    plugin: OpenApiPlugin,
+    options: {
+        info: { title: 'My API', version: '1.0.0' },
+        ui: 'rapidoc',
+        uiOptions: { renderStyle: 'read', showHeader: false, primaryColor: '#6b46c1' },
+    },
+});
+```
+
+That emits:
+
+```text
+<rapi-doc spec-url="/openapi.json" render-style="read" primary-color="#6b46c1"></rapi-doc>
+```
+
+The four renderers do not share a configuration mechanism, so each one receives the bag through its own:
+
+| `ui`        | Mechanism                                  | Example                                               |
+| ----------- | ------------------------------------------ | ----------------------------------------------------- |
+| `'scalar'`  | JSON in a `data-configuration` attribute   | `{ theme: 'purple', hideModels: true }`               |
+| `'rapidoc'` | kebab-case attributes on `<rapi-doc>`      | `{ renderStyle: 'read', primaryColor: '#6b46c1' }`    |
+| `'redoc'`   | kebab-case attributes on `<redoc>`         | `{ hideDownloadButton: true, theme: { colors: {} } }` |
+| `'swagger'` | members of the `SwaggerUIBundle` init call | `{ deepLinking: true, docExpansion: 'none' }`         |
+
+Keys are camelCase as each renderer documents them. For the two attribute-driven renderers they become kebab-case, `true` renders as a bare attribute, and `false` drops the attribute entirely, because both read a bare attribute as on and its absence as off. Objects and arrays are JSON-encoded into the attribute, which is how Redoc's `theme` is passed.
+
+Key names are not checked against any list of known options. They belong to the renderer, not to this plugin, so an option added by a future release of any of the four reaches it without a change here. Two kinds of key are dropped rather than passed on:
+
+- A key the provider already emits (`url`, `data-url`, `spec-url`, `dom_id`). The plugin's own value wins, so a mistaken entry cannot detach the UI from the document it is meant to render.
+- For `'rapidoc'` and `'redoc'`, a key that is not a well-formed HTML attribute name after kebab-casing, meaning `/^[a-z][a-z0-9-]*$/`. An attribute name is emitted unquoted, so a space or an `=` inside one would start a second attribute and a `>` would close the tag. Escaping cannot fix that, so such a key is not emitted at all.
+
+The values are validated in one respect: the whole bag must be JSON-serializable, since every renderer receives it as JSON or as JSON-derived markup. A `BigInt`, a circular structure, or a `toJSON` that throws fails `server.register()` rather than surfacing as a 500 on every documentation request.
+
+`uiOptions` has no effect when `ui` is `false` or a `UiRenderer` function, since a function already writes its own HTML.
 
 ### The CDN tradeoff
 

@@ -33,6 +33,7 @@ export interface OpenApiOptions {
     path?: string;
     basePath?: string;
     ui?: UiName | false | UiRenderer;
+    uiOptions?: Record<string, unknown>;
     security?: Record<string, OpenApiSecurityScheme>;
     include?: 'auto' | 'tagged';
     filterTag?: string;
@@ -44,6 +45,7 @@ export interface ResolvedOpenApiOptions {
     path: string;
     basePath?: string;
     ui: UiName | false | UiRenderer;
+    uiOptions: Record<string, unknown>;
     security: Record<string, OpenApiSecurityScheme>;
     include: 'auto' | 'tagged';
     filterTag: string;

@@ -68,7 +68,10 @@ export const OpenApiPlugin: Plugin<OpenApiOptions> = {
 
                           return ui(request, cachedDocument, h);
                       }
-                    : (_request, h) => h.response(uiProviders[ui](options.info.title, fullSpecPath)).type('text/html');
+                    : (_request, h) =>
+                          h
+                              .response(uiProviders[ui](options.info.title, fullSpecPath, options.uiOptions))
+                              .type('text/html');
 
             server.route({ method: 'GET', path: uiPath, handler });
         }

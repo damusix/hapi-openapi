@@ -18,6 +18,20 @@ export const optionsSchema = Joi.object({
         Joi.function(),
         Joi.boolean().valid(false).prefs({ convert: false }),
     ).default('scalar'),
+    // Key names are deliberately unvalidated: they belong to the selected
+    // renderer, not to this plugin, and checking them here would mean tracking
+    // four renderers' option sets forever. Serializability is not optional
+    // though — every provider runs JSON.stringify over the bag or its values,
+    // and a BigInt, a circular structure, or a throwing toJSON would otherwise
+    // surface as a 500 on every UI request instead of a failed registration.
+    uiOptions: Joi.object()
+        .unknown(true)
+        .custom((value: Record<string, unknown>) => {
+            JSON.stringify(value);
+
+            return value;
+        }, 'JSON-serializable')
+        .default({}),
     security: Joi.object()
         .pattern(Joi.string(), Joi.object({ type: Joi.string().required() }).unknown(true))
         .default({}),

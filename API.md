@@ -37,6 +37,7 @@ Options are validated at register time with joi (`abortEarly: false`). Unknown k
 | `path`      | `string`                                | `'/openapi'` | Base path for the plugin's own routes.                                          |
 | `basePath`  | `string`                                | none         | Must start with `/`. Restricts the document to routes at or under this path.    |
 | `ui`        | `UiName \| false \| UiRenderer`         | `'scalar'`   | What to serve at `<path>/ui`. See [`ui`](#ui).                                  |
+| `uiOptions` | `Record<string, unknown>`               | `{}`         | Options for the built-in selected by `ui`. See [`uiOptions`](#uioptions).       |
 | `security`  | `Record<string, OpenApiSecurityScheme>` | `{}`         | Maps a hapi auth strategy name to an OAS 3.1 Security Scheme Object.            |
 | `include`   | `'auto' \| 'tagged'`                    | `'auto'`     | Route selection mode.                                                           |
 | `filterTag` | `string`                                | `'api'`      | Marker tag for `include: 'tagged'`. Stripped from emitted `tags` in both modes. |
@@ -260,6 +261,71 @@ CDN URLs are pinned to the renderer's major version, so patch and minor releases
 
 `title` and the spec path are HTML-escaped (`&`, `<`, `>`, `"`, `'`) wherever they appear in markup. Swagger UI's init call takes the spec path as a JavaScript argument instead, so there it is embedded as a JSON string literal, with `<` further escaped to `\u003C`, because HTML character references are not decoded inside `<script>`.
 
+### `uiOptions`
+
+`Record<string, unknown>`, default `{}`. Passed to the built-in provider selected by `ui` and serialized into that renderer's own configuration mechanism. Ignored when `ui` is `false` or a `UiRenderer`.
+
+```ts
+await server.register({
+    plugin: OpenApiPlugin,
+    options: {
+        info: { title: 'My API', version: '1.0.0' },
+        ui: 'swagger',
+        uiOptions: { deepLinking: true, docExpansion: 'none', defaultModelsExpandDepth: -1 },
+    },
+});
+```
+
+The four renderers do not share a mechanism, so there is no single serialization:
+
+| `ui`        | Mechanism                                                | Emitted                                                                                 |
+| ----------- | -------------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| `'scalar'`  | `data-configuration` attribute holding JSON              | `data-configuration="{&quot;theme&quot;:&quot;purple&quot;}"`                           |
+| `'rapidoc'` | attributes on `<rapi-doc>`, camelCase keys as kebab-case | `<rapi-doc spec-url="/openapi.json" render-style="read">`                               |
+| `'redoc'`   | attributes on `<redoc>`, camelCase keys as kebab-case    | `<redoc spec-url="/openapi.json" hide-download-button>`                                 |
+| `'swagger'` | members of the init object                               | `SwaggerUIBundle({ url: "/openapi.json", dom_id: '#swagger-ui', "deepLinking": true })` |
+
+Scalar's JSON is HTML-escaped into the attribute. Its own parser does `.split('&quot;').join('"')`, so entity-escaped quotes are the form it reads back. Swagger UI's members are JSON, with `<` escaped to `\u003C` for the same reason the spec path is.
+
+Attribute values (`'rapidoc'` and `'redoc'`) serialize by value kind:
+
+| Value           | Emitted                                       |
+| --------------- | --------------------------------------------- |
+| string          | `key="value"`, HTML-escaped                   |
+| `true`          | bare attribute, no value                      |
+| `false`         | nothing; the attribute is omitted entirely    |
+| number          | `key="14"`                                    |
+| object or array | `key="<json>"`, JSON-encoded and HTML-escaped |
+| `undefined`     | nothing                                       |
+| `null`          | nothing                                       |
+
+`false` omits rather than emitting `="false"` because both renderers read a bare attribute as on and its absence as off.
+
+Key names are not checked against any list of known options. `uiOptions` is `Joi.object().unknown(true)`, so a key belonging to a renderer this plugin has never heard of passes through unchanged. Three rules drop a key anyway:
+
+| Rule                                                  | Applies to             | Reason                                                                                                                                               |
+| ----------------------------------------------------- | ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Not matching `/^[a-z][a-z0-9-]*$/` after kebab-casing | `'rapidoc'`, `'redoc'` | An attribute name is emitted unquoted, so a space or an `=` in one starts a second attribute and a `>` closes the tag. Escaping cannot make it safe. |
+| Colliding with a key the provider already emits       | all four               | The plugin's own value wins, so a mistaken entry cannot detach the UI from its document.                                                             |
+| `__proto__`                                           | `'swagger'`            | A quoted `"__proto__"` in an object literal sets the prototype instead of creating an own property, so Swagger UI would never read it.               |
+
+The collision set is per provider:
+
+| `ui`        | Dropped keys      |
+| ----------- | ----------------- |
+| `'scalar'`  | `url`, `data-url` |
+| `'rapidoc'` | `spec-url`        |
+| `'redoc'`   | `spec-url`        |
+| `'swagger'` | `url`, `dom_id`   |
+
+For the two attribute renderers both checks run against the kebab-case name, so `specUrl` and `spec-url` are both dropped, and a padded `' spec-url'` is rejected by the name shape before the collision check sees it.
+
+Values are validated in exactly one respect. Every provider serializes the bag, so it must be JSON-serializable: a `BigInt`, a circular structure, or a `toJSON` that throws fails validation at register time rather than throwing inside the route handler on every documentation request.
+
+```
+"uiOptions" failed custom validation because Do not know how to serialize a BigInt
+```
+
 ### `false`
 
 No UI route is registered. `GET <path>/ui` returns 404 and only the spec route exists.
@@ -312,6 +378,7 @@ interface OpenApiOptions {
     path?: string;
     basePath?: string;
     ui?: UiName | false | UiRenderer;
+    uiOptions?: Record<string, unknown>;
     security?: Record<string, { type: string; [key: string]: unknown }>;
     include?: 'auto' | 'tagged';
     filterTag?: string;
