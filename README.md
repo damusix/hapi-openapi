@@ -115,6 +115,22 @@ Unknown option keys are rejected at register time, so a typo fails `server.regis
 | `'redoc'`   | [Redoc](https://github.com/Redocly/redoc)          | `https://cdn.jsdelivr.net/npm/redoc@2/bundles/redoc.standalone.js`               |
 | `'swagger'` | [Swagger UI](https://swagger.io/tools/swagger-ui/) | `https://unpkg.com/swagger-ui-dist@5/swagger-ui-bundle.js` plus `swagger-ui.css` |
 
+Each screenshot below is the same [`example/server.ts`](example/server.ts) API served at `<path>/ui` by the value named under it.
+
+<table>
+<tr>
+<td width="50%" align="center"><img src="assets/scalar.png" width="100%" alt="Scalar rendering the example API in a dark theme, with a left navigation pane and a code sample panel on the right" /><br /><code>ui: 'scalar'</code></td>
+<td width="50%" align="center"><img src="assets/rapidoc.png" width="100%" alt="RapiDoc rendering the example API in a dark theme with orange accents and an inline TRY panel" /><br /><code>ui: 'rapidoc'</code></td>
+</tr>
+<tr>
+<td width="50%" align="center"><img src="assets/swagger.png" width="100%" alt="Swagger UI rendering the example API in its light theme, with the classic operation list and an Authorize button" /><br /><code>ui: 'swagger'</code></td>
+<td width="50%" align="center"><img src="assets/redoc.png" width="100%" alt="Redoc rendering the example API in a three-pane layout, light content beside dark response samples" /><br /><code>ui: 'redoc'</code></td>
+</tr>
+<tr>
+<td colspan="2" align="center"><img src="assets/custom.png" width="576" alt="The unstyled HTML index page produced by the UiRenderer in example/server.ts" /><br /><code>ui: UiRenderer</code></td>
+</tr>
+</table>
+
 ```ts
 await server.register({
     plugin: OpenApiPlugin,
