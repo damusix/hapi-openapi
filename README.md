@@ -1,8 +1,8 @@
 # @hapi/openapi
 
-hapi plugin that generates an OpenAPI 3.1 document from the live route table and serves it behind a documentation UI. No third-party conversion layer: joi 18.2's native `~standard.jsonSchema` output is already draft 2020-12, the same dialect OpenAPI 3.1 uses, so params, payloads, and responses convert directly from the schemas hapi already validates with.
+hapi plugin that generates an OpenAPI 3.1 document from the live route table and serves it behind a documentation UI. It needs no third-party conversion layer. joi 18.2's native `~standard.jsonSchema` output is already draft 2020-12, the same dialect OpenAPI 3.1 uses, so params, payloads, and responses convert directly from the schemas hapi already validates with.
 
-The package has no dependencies. A documentation UI is an HTML document this plugin generates; the renderer's JavaScript is loaded by the browser from that renderer's public CDN. Nothing is vendored, bundled, or read from disk, and there is no renderer package to install.
+The package has no dependencies. A documentation UI is an HTML document this plugin generates. The browser loads the renderer's JavaScript from that renderer's public CDN. Nothing is vendored, bundled, or read from disk, and there is no renderer package to install.
 
 ## Install
 
@@ -25,7 +25,7 @@ await server.register({
 });
 ```
 
-This serves `GET /openapi.json` (the spec) and `GET /openapi/ui` (the documentation UI). The document is built once, eagerly, in an `onPostStart` server extension. After that point every route is registered and the document never changes, so the same object is served on every request. A lazy build on first request is kept only as a fallback for a server that is never started (`server.inject` against an unstarted server).
+This serves `GET /openapi.json` (the spec) and `GET /openapi/ui` (the documentation UI). The document is built once, eagerly, in an `onPostStart` server extension. After that point every route is registered and the document never changes, so every request gets the same object. The plugin keeps a lazy build on first request only as a fallback for a server that is never started (`server.inject` against an unstarted server).
 
 A route that already carries hapi's own config needs no annotation to be documented:
 
@@ -155,13 +155,13 @@ Each built-in emits a complete HTML document that points the renderer at the spe
 </html>
 ```
 
-Every CDN URL is pinned to the renderer's major version. An unversioned jsdelivr or unpkg URL resolves to `@latest` on every page load, which would let a renderer's next breaking release break your documentation page with no change on your side.
+Every CDN URL is pinned to the renderer's major version. An unversioned jsdelivr or unpkg URL resolves to `@latest` on every page load. That would let a renderer's next breaking release break your documentation page with no change on your side.
 
 `ui: false` registers no UI route at all. `GET <path>/ui` then returns 404, and only the spec route exists.
 
 ### Secure defaults
 
-Several of these renderers ship features that send your API document, or the URL it lives at, to the renderer's vendor. This plugin renders an organization's internal API surface, so every one of those features is off unless you turn it on. **This is a deliberate divergence from each renderer's stock behavior.**
+Several of these renderers include features that send your API document, or the URL it lives at, to the renderer's vendor. This plugin renders an organization's internal API surface, so every one of those features is off unless you turn it on. **This is a deliberate divergence from each renderer's stock behavior.**
 
 `'scalar'`:
 
@@ -183,13 +183,13 @@ Several of these renderers ship features that send your API document, or the URL
 | -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------- |
 | `loadFonts: 'false'` | Every viewer's browser fetching Open Sans from `fonts.gstatic.com`. **This one changes how the page looks**, falling back to system fonts | `uiOptions: { loadFonts: 'true' }` or `{ loadFonts: true }` |
 
-`'redoc'` has no such default, because it has no such feature. An audit of `redoc.standalone.js@2` found no phone-home: the `telemetry` and `amplitude` strings in the bundle are Redocly's config-file schema and React's SVG attribute list, not runtime calls.
+`'redoc'` has no such default, because it has no such feature. An audit of `redoc.standalone.js@2` found no phone-home. The `telemetry` and `amplitude` strings in the bundle are Redocly's config-file schema and React's SVG attribute list, not runtime calls.
 
-RapiDoc reads `load-fonts` as a string rather than a boolean, so `loadFonts` accepts either spelling and both do what they say: `false` and `'false'` keep fonts off, `true` and `'true'` turn them on. The plugin converts a boolean to the string form RapiDoc reads.
+RapiDoc reads `load-fonts` as a string rather than a boolean, so `loadFonts` accepts either spelling and both do what they say. `false` and `'false'` keep fonts off, `true` and `'true'` turn them on. The plugin converts a boolean to the string form RapiDoc reads.
 
-Nested defaults merge one level deep, so setting an unrelated sub-key does not quietly re-enable a feature. `uiOptions: { agent: { key: 'abc' } }` still sends `agent.disabled: true`; only writing `disabled: false` yourself turns the Ask AI button back on.
+Nested defaults merge one level deep, so setting an unrelated sub-key does not quietly re-enable a feature. `uiOptions: { agent: { key: 'abc' } }` still sends `agent.disabled: true`. Only writing `disabled: false` yourself turns the Ask AI button back on.
 
-Every tag the plugin emits that actually fetches from a CDN, meaning a `<script>` with `src` and a `<link>` with `href`, carries `referrerpolicy="no-referrer"` and `crossorigin="anonymous"`. **The CDN never receives your document** — it serves JavaScript to the browser, and the spec is fetched from your own server. What it would otherwise receive is a `Referer` header naming the internal host and path serving your docs, disclosing that an internal API exists and where. That is the only CDN-side disclosure there is to close, and `no-referrer` closes it.
+Every tag the plugin emits that fetches from a CDN carries `referrerpolicy="no-referrer"` and `crossorigin="anonymous"`. That means a `<script>` with `src` and a `<link>` with `href`. **The CDN never receives your document**. It serves JavaScript to the browser, and the browser fetches the spec from your own server. Otherwise the CDN would receive a `Referer` header naming the internal host and path serving your docs, disclosing that an internal API exists and where. That is the only CDN-side disclosure there is to close, and `no-referrer` closes it.
 
 ### Configuring the renderer
 
@@ -212,7 +212,7 @@ That emits:
 <rapi-doc spec-url="/openapi.json" load-fonts="false" render-style="read" primary-color="#6b46c1"></rapi-doc>
 ```
 
-The four renderers do not share a configuration mechanism, so each one receives the bag through its own, merged over that renderer's [secure defaults](#secure-defaults):
+The four renderers do not share a configuration mechanism. Each one receives the bag through its own, merged over that renderer's [secure defaults](#secure-defaults):
 
 | `ui`        | Mechanism                                  | Example                                               |
 | ----------- | ------------------------------------------ | ----------------------------------------------------- |
@@ -221,9 +221,9 @@ The four renderers do not share a configuration mechanism, so each one receives 
 | `'redoc'`   | kebab-case attributes on `<redoc>`         | `{ hideDownloadButton: true, theme: { colors: {} } }` |
 | `'swagger'` | members of the `SwaggerUIBundle` init call | `{ deepLinking: true, docExpansion: 'none' }`         |
 
-Keys are camelCase as each renderer documents them. For the two attribute-driven renderers they become kebab-case, `true` renders as a bare attribute, and `false` drops the attribute entirely, because both read a bare attribute as on and its absence as off. Objects and arrays are JSON-encoded into the attribute, which is how Redoc's `theme` is passed.
+Keys are camelCase as each renderer documents them. For the two attribute-driven renderers they become kebab-case. `true` renders as a bare attribute and `false` drops the attribute entirely, because both read a bare attribute as on and its absence as off. Objects and arrays are JSON-encoded into the attribute, which is how Redoc's `theme` is passed.
 
-Key names are not checked against any list of known options. They belong to the renderer, not to this plugin, so an option added by a future release of any of the four reaches it without a change here. Two kinds of key are dropped rather than passed on:
+Key names are not checked against any list of known options. They belong to the renderer, not to this plugin, so an option added by a future release of any of the four reaches that renderer without a change here. Two kinds of key are dropped rather than passed on:
 
 - A key the provider already emits (`url`, `data-url`, `spec-url`, `dom_id`). The plugin's own value wins, so a mistaken entry cannot detach the UI from the document it is meant to render.
 - For `'rapidoc'` and `'redoc'`, a key that is not a well-formed HTML attribute name after kebab-casing, meaning `/^[a-z][a-z0-9-]*$/`. An attribute name is emitted unquoted, so a space or an `=` inside one would start a second attribute and a `>` would close the tag. Escaping cannot fix that, so such a key is not emitted at all.
@@ -273,9 +273,9 @@ await server.register({
 });
 ```
 
-Serve `/assets/scalar.js` the way you already serve static files, with `@hapi/inert` or a proxy in front of the app, and use `exclude` (or `plugins.openapi.hide`) to keep the asset route out of the document.
+Serve `/assets/scalar.js` the way you already serve static files, with `@hapi/inert` or a proxy in front of the app. Use `exclude` (or `plugins.openapi.hide`) to keep the asset route out of the document.
 
-The renderer function receives the built document rather than a URL to fetch it from, so it can also render server-side, transform the spec before display, or drop the documentation into an existing page shell. It gets the same document object the spec route serves, built on demand if the server has not started yet.
+The renderer function receives the built document rather than a URL to fetch it from. That also lets it render server-side, transform the spec before display, or drop the documentation into an existing page shell. It gets the same document object the spec route serves, built on demand if the server has not started yet.
 
 ## Per-route surface
 
@@ -305,13 +305,13 @@ server.route({
 | `hide`      | `boolean`                                                              | Excludes the route from the document regardless of `include` mode.                                                                                                                                                                                                                                                                                                                        |
 | `responses` | `Record<number \| string, { description?: string; schema?: unknown }>` | Documents statuses hapi cannot express on its own (a `204`, a Boom error shape). Merges with `route.settings.response`. A hapi-validated schema wins over an annotation for the same status, but the annotation's `description` survives, since hapi response schemas carry none. `schema` is typed `unknown` and only a joi schema produces a response body; any other value is dropped. |
 
-Everything else, `summary` (from `description`), operation `description` (from `notes`), `tags`, `operationId` (derived from method and path), request parameters, request body, and 200-range response bodies, is derived, never configured through `plugins.openapi`.
+Everything else is derived, never configured through `plugins.openapi`: `summary` (from `description`), operation `description` (from `notes`), `tags`, `operationId` (derived from method and path), request parameters, request body, and 200-range response bodies.
 
 Path parameters are emitted whether or not `validate.params` describes them. A templated segment with no schema gets `{ type: 'string' }`, so `DELETE /widgets/{id}` above documents its `id` parameter with no validation config at all.
 
 ## Auth mapping
 
-The plugin resolves each route's _effective_ auth via `server.auth.lookup(route)`, the per-route config or the server default, so routes document themselves with zero changes. The one thing hapi cannot tell you is what a strategy name means on the wire (`'jwt'` could be a bearer token or a cookie), so `options.security` supplies that one mapping:
+The plugin resolves each route's _effective_ auth via `server.auth.lookup(route)`, the per-route config or the server default, so routes document themselves with zero changes. The one thing hapi cannot tell you is what a strategy name means on the wire. `'jwt'` could be a bearer token or a cookie, so `options.security` supplies that one mapping:
 
 ```ts
 await server.register({
@@ -349,7 +349,7 @@ Rules:
 - `mode: 'required'` (the default) produces one `security` entry per strategy, OR semantics: `[{ jwt: [] }]`, or `[{ jwt: [] }, { session: [] }]` for multiple strategies.
 - `mode: 'optional'` produces the same entries plus a trailing `{}`, OpenAPI's "or no auth" marker.
 - `mode: 'try'` is treated as `'optional'`.
-- Scopes (`route.settings.auth.access[].scope.selection`, flattened and deduped, `!`-prefixed forbidden scopes excluded) populate the security entry's scope array only when the mapped scheme is `type: 'oauth2'`. Every other scheme type gets `[]`, because OpenAPI has nowhere else to put a scope.
+- Scopes populate the security entry's scope array only when the mapped scheme is `type: 'oauth2'`. They come from `route.settings.auth.access[].scope.selection`, flattened and deduped, minus the `!`-prefixed forbidden ones. Every other scheme type gets `[]`, because OpenAPI has nowhere else to put a scope.
 - A strategy referenced by an included route but missing from `options.security` fails the document build rather than silently omitting the route's auth. Since the build runs in `onPostStart`, that surfaces as a failed `server.start()` naming the strategy and the route path:
 
     ```
@@ -360,7 +360,7 @@ Every scheme in `options.security` referenced by at least one included route is 
 
 ## Migrating from hapi-swagger
 
-Set `ui: 'swagger'` to keep the same Swagger UI your team already reads, and set `include: 'tagged'` to keep documenting the same routes. `include` defaults to `'auto'`, which documents every route, so a migration that skips it gets a much larger document than hapi-swagger produced. `filterTag` defaults to `'api'`, so routes already carrying `tags: ['api']` need no further config; point `filterTag` at your own marker if it differs:
+Set `ui: 'swagger'` to keep the same Swagger UI your team already reads, and set `include: 'tagged'` to keep documenting the same routes. `include` defaults to `'auto'`, which documents every route, so a migration that skips it gets a much larger document than hapi-swagger produced. `filterTag` defaults to `'api'`, so routes already carrying `tags: ['api']` need no further config. Point `filterTag` at your own marker if it differs:
 
 ```ts
 await server.register({
@@ -377,7 +377,7 @@ Routes keep their existing tags array. The marker tag is stripped from the emitt
 
 ## Per-app documents
 
-The plugin declares `multiple: true`, so it can be registered more than once in the same server, one document per app or API version. Register each instance inside a wrapper plugin with `routes: { prefix: '/v1' }` so its spec and UI routes acquire the prefix automatically, and pass a matching `basePath` so the document only picks up that app's routes:
+The plugin declares `multiple: true`, so it can be registered more than once in the same server, one document per app or API version. Register each instance inside a wrapper plugin with `routes: { prefix: '/v1' }` so its spec and UI routes acquire the prefix automatically. Pass a matching `basePath` so the document only picks up that app's routes:
 
 ```ts
 await server.register({
@@ -396,13 +396,13 @@ await server.register({
 });
 ```
 
-This serves `/v1/openapi.json` and `/v1/openapi/ui`. The UI's spec URL resolves under the same prefix, so it works standalone. `basePath` is what keeps two prefixed instances' documents disjoint: each document only includes routes under its own prefix, so neither instance's routes (or the other instance's spec and UI routes) leak into the wrong document.
+This serves `/v1/openapi.json` and `/v1/openapi/ui`. The UI's spec URL resolves under the same prefix, so it works standalone. `basePath` is what keeps two prefixed instances' documents disjoint. Each document only includes routes under its own prefix, so neither instance's routes (or the other instance's spec and UI routes) leak into the wrong document.
 
 ## Example server
 
 `example/server.ts` is a runnable server that puts the whole surface in front of you at once: validated path params, query and payload, a response schema, an authenticated route with its `security` mapping, a route hidden with `plugins.openapi.hide`, and a route dropped by `exclude`.
 
-It runs from a clone of this repository rather than from an installed package. It imports the plugin by name, `@hapi/openapi`, which Node's self-reference resolves through this package's `exports` to `dist/`, so the build has to exist first. `npm install` already runs `prepare`, which builds, so the explicit build is only needed after changing `src/`.
+It runs from a clone of this repository rather than from an installed package. It imports the plugin by name, `@hapi/openapi`. Node's self-reference resolves that through this package's `exports` to `dist/`, so the build has to exist first. `npm install` already runs `prepare`, which builds, so the explicit build is only needed after changing `src/`.
 
 ```
 npm install
