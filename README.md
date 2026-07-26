@@ -119,15 +119,15 @@ Each screenshot below is the same [`example/server.ts`](example/server.ts) API s
 
 <table>
 <tr>
-<td width="50%" align="center"><img src="assets/scalar.png" width="100%" alt="Scalar rendering the example API in a dark theme, with a left navigation pane and a code sample panel on the right" /><br /><code>ui: 'scalar'</code></td>
-<td width="50%" align="center"><img src="assets/rapidoc.png" width="100%" alt="RapiDoc rendering the example API in a dark theme with orange accents and an inline TRY panel" /><br /><code>ui: 'rapidoc'</code></td>
+<td width="50%" align="center"><img src="https://raw.githubusercontent.com/damusix/hapi-openapi/main/assets/scalar.png" width="100%" alt="Scalar rendering the example API in a dark theme, with a left navigation pane and a code sample panel on the right" /><br /><code>ui: 'scalar'</code></td>
+<td width="50%" align="center"><img src="https://raw.githubusercontent.com/damusix/hapi-openapi/main/assets/rapidoc.png" width="100%" alt="RapiDoc rendering the example API in a dark theme with orange accents and an inline TRY panel" /><br /><code>ui: 'rapidoc'</code></td>
 </tr>
 <tr>
-<td width="50%" align="center"><img src="assets/swagger.png" width="100%" alt="Swagger UI rendering the example API in its light theme, with the classic operation list and an Authorize button" /><br /><code>ui: 'swagger'</code></td>
-<td width="50%" align="center"><img src="assets/redoc.png" width="100%" alt="Redoc rendering the example API in a three-pane layout, light content beside dark response samples" /><br /><code>ui: 'redoc'</code></td>
+<td width="50%" align="center"><img src="https://raw.githubusercontent.com/damusix/hapi-openapi/main/assets/swagger.png" width="100%" alt="Swagger UI rendering the example API in its light theme, with the classic operation list and an Authorize button" /><br /><code>ui: 'swagger'</code></td>
+<td width="50%" align="center"><img src="https://raw.githubusercontent.com/damusix/hapi-openapi/main/assets/redoc.png" width="100%" alt="Redoc rendering the example API in a three-pane layout, light content beside dark response samples" /><br /><code>ui: 'redoc'</code></td>
 </tr>
 <tr>
-<td colspan="2" align="center"><img src="assets/custom.png" width="576" alt="The unstyled HTML index page produced by the UiRenderer in example/server.ts" /><br /><code>ui: UiRenderer</code></td>
+<td colspan="2" align="center"><img src="https://raw.githubusercontent.com/damusix/hapi-openapi/main/assets/custom.png" width="576" alt="The unstyled HTML index page produced by the UiRenderer in example/server.ts" /><br /><code>ui: UiRenderer</code></td>
 </tr>
 </table>
 
